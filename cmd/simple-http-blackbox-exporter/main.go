@@ -8,6 +8,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -16,13 +17,11 @@ var (
 	configFile    = flag.String("config", "config.yaml", "A yaml config file with settings and services to monitor.")
 )
 
-const httpURLconst = "https://httpstat.us/200"
-
 type Config struct {
 	Urls []string `yaml:",flow"`
 }
 
-func (c *Config) getConf() *Config {
+func (c *Config) GetConf() *Config {
 
 	if *configFile == "" {
 		log.Fatal("Please provide yaml file by using -config option")
@@ -46,17 +45,19 @@ func GetUrl(url string) (int64, int64) {
 
 	resp, err := http.Get(url)
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
+		return 0, 0
 	}
 
 	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
 		defer resp.Body.Close()
 
 		elapsed := time.Since(start).Milliseconds()
+		log.Info("http.Get to " + url + " took " + strconv.FormatInt(elapsed, 10) + " milliseconds.\n")
 		return 1, elapsed
-		log.Infoln("http.Get to %s took %v seconds \n", 1, elapsed)
 	}
 
+	log.Warn("http.Get failed to get to " + url + " - status code: " + strconv.Itoa(resp.StatusCode) + ".\n")
 	return 0, 0
 }
 
@@ -82,7 +83,7 @@ func NewExporter() *Exporter {
 		),
 		responseTime: prometheus.NewDesc(
 			"sample_external_url_response_ms",
-			"Number time it took for the http request to finish (in milliseconds).",
+			"The amount of time it took for the http request to finish (in milliseconds).",
 			[]string{"url"},
 			nil,
 		),
@@ -100,7 +101,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(e.up, prometheus.GaugeValue, 1)
 
 	var c Config
-	c.getConf()
+	c.GetConf()
 	for _, url := range c.Urls {
 		var responseUp, responseTime = GetUrl(url)
 		ch <- prometheus.MustNewConstMetric(e.responseUp, prometheus.GaugeValue, float64(responseUp), url)
