@@ -40,7 +40,7 @@ func (c *Config) GetConf() *Config {
 	return c
 }
 
-func GetUrl(url string) (int64, int64) {
+func GetURL(url string) (int64, int64) {
 	start := time.Now()
 
 	resp, err := http.Get(url)
@@ -103,7 +103,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	var c Config
 	c.GetConf()
 	for _, url := range c.Urls {
-		var responseUp, responseTime = GetUrl(url)
+		var responseUp, responseTime = GetURL(url)
 		ch <- prometheus.MustNewConstMetric(e.responseUp, prometheus.GaugeValue, float64(responseUp), url)
 		ch <- prometheus.MustNewConstMetric(e.responseTime, prometheus.GaugeValue, float64(responseTime), url)
 	}
