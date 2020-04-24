@@ -40,10 +40,13 @@ func (c *Config) GetConf() *Config {
 	return c
 }
 
-func GetURL(url string) (int64, int64) {
+func GetURL(url string) (int, int64) {
 	start := time.Now()
 
-	resp, err := http.Get(url)
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
+	resp, err := client.Get(url)
 	if err != nil {
 		log.Error(err)
 		return 0, 0
@@ -53,11 +56,11 @@ func GetURL(url string) (int64, int64) {
 		defer resp.Body.Close()
 
 		elapsed := time.Since(start).Milliseconds()
-		log.Info("http.Get to " + url + " took " + strconv.FormatInt(elapsed, 10) + " milliseconds.\n")
+		log.Info("client.Get to " + url + " took " + strconv.FormatInt(elapsed, 10) + " milliseconds.\n")
 		return 1, elapsed
 	}
 
-	log.Warn("http.Get failed to get to " + url + " - status code: " + strconv.Itoa(resp.StatusCode) + ".\n")
+	log.Warn("client.Get failed to get to " + url + " - status code: " + strconv.Itoa(resp.StatusCode) + ".\n")
 	return 0, 0
 }
 
