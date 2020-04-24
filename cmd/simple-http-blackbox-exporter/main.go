@@ -5,38 +5,59 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/log"
+	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"net/http"
+	"time"
 )
 
 var (
 	listenAddress = flag.String("listen-address", ":1234", "The address to expose the metrics in prometheus format.")
-	// httpURL       = flag.String("http-url", "https://httpstat.us/200", "The URL that should be scraped.")
+	configFile    = flag.String("config", "config.yaml", "A yaml config file with settings and services to monitor.")
 )
 
-const httpURL = "https://httpstat.us/200"
+const httpURLconst = "https://httpstat.us/200"
 
-func GetUrlStatus(url string) int {
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
-		return 1
-	}
-	return 0
+type Config struct {
+	Urls []string `yaml:",flow"`
 }
 
-func GetUrlResponseTime(url string) float64 {
+func (c *Config) getConf() *Config {
+
+	if *configFile == "" {
+		log.Fatal("Please provide yaml file by using -config option")
+	}
+
+	file, err := ioutil.ReadFile(*configFile)
+	if err != nil {
+		log.Fatalf("Error while reading the YAML file: %s\n", err)
+	}
+
+	err = yaml.Unmarshal(file, c)
+	if err != nil {
+		log.Fatalf("Unmarshal: %v", err)
+	}
+
+	return c
+}
+
+func GetUrl(url string) (int64, int64) {
+	start := time.Now()
+
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
-		return 1
+		defer resp.Body.Close()
+
+		elapsed := time.Since(start).Milliseconds()
+		return 1, elapsed
+		log.Infoln("http.Get to %s took %v seconds \n", 1, elapsed)
 	}
-	return 0
+
+	return 0, 0
 }
 
 type Exporter struct {
@@ -77,8 +98,14 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	}()
 
 	ch <- prometheus.MustNewConstMetric(e.up, prometheus.GaugeValue, 1)
-	ch <- prometheus.MustNewConstMetric(e.responseUp, prometheus.GaugeValue, float64(GetUrlStatus(httpURL)), httpURL)
-	ch <- prometheus.MustNewConstMetric(e.responseTime, prometheus.GaugeValue, GetUrlResponseTime(httpURL), httpURL)
+
+	var c Config
+	c.getConf()
+	for _, url := range c.Urls {
+		var responseUp, responseTime = GetUrl(url)
+		ch <- prometheus.MustNewConstMetric(e.responseUp, prometheus.GaugeValue, float64(responseUp), url)
+		ch <- prometheus.MustNewConstMetric(e.responseTime, prometheus.GaugeValue, float64(responseTime), url)
+	}
 }
 
 func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
