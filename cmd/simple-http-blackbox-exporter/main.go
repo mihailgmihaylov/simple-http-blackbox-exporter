@@ -119,6 +119,7 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func main() {
+	flag.Parse()
 	prometheus.MustRegister(NewExporter())
 	http.Handle("/metrics", promhttp.Handler())
 
