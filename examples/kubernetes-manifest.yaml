@@ -1,0 +1,202 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: simple-http-blackbox-exporter
+  annotations:
+    apparmor.security.beta.kubernetes.io/allowedProfileNames: 'runtime/default'
+    apparmor.security.beta.kubernetes.io/defaultProfileName: 'runtime/default'
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'docker/default'
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: 'docker/default'
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  hostNetwork: false
+  hostPorts:
+    - min: 1234
+      max: 1234
+  hostIPC: false
+  hostPID: false
+  volumes:
+    - 'configMap'
+  runAsUser:
+    rule: 'MustRunAsNonRoot'
+  seLinux:
+    rule: 'RunAsAny'
+  supplementalGroups:
+    ranges:
+      - max: 65534
+        min: 65534
+    rule: MustRunAs
+  fsGroup:
+    ranges:
+      - max: 65534
+        min: 65534
+    rule: MustRunAs
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: simple-http-blackbox-exporter
+  namespace: monitoring
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: psp:simple-http-blackbox-exporter
+  namespace: monitoring
+rules:
+  - apiGroups:
+      - policy
+    resources:
+      - podsecuritypolicies
+    resourceNames:
+      - simple-http-blackbox-exporter
+    verbs:
+      - use
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: psp:simple-http-blackbox-exporter
+  namespace: monitoring
+roleRef:
+  kind: Role
+  name: psp:simple-http-blackbox-exporter
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: simple-http-blackbox-exporter
+    namespace: monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: monitoring
+  name: config
+data:
+  config.yaml: |-
+    urls:
+      - https://httpstat.us/200
+      - https://httpstat.us/503 
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: monitoring
+  name: simple-http-blackbox-exporter
+  labels:
+    system: monitoring
+    component: simple-http-blackbox-exporter
+spec:
+  selector:
+    matchLabels:
+      system: monitoring
+      component: simple-http-blackbox-exporter
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        system: monitoring
+        component: simple-http-blackbox-exporter
+    spec:
+      # use user nobody
+      securityContext:
+        runAsUser: 65534
+        fsGroup: 65534
+      serviceAccountName: simple-http-blackbox-exporter
+      # Since the exporter will mostly query external URL it is better to skip the
+      # kubernetes search domain craw and go straight to the fqdn:
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      containers:
+        - name: simple-http-blackbox-exporter
+          image: mihailgmihaylov/simple-http-blackbox-exporter:v0.1
+          args: ["-config", "/go/config.yaml"]
+          readinessProbe:
+            # For this example we are using a simple tcp probe to create less queries towards the app
+            tcpSocket:
+              port: 1234
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 1234
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 50Mi
+            limits:
+              cpu: 200m
+              memory: 100Mi
+          ports:
+            - name: http
+              containerPort: 1234
+              protocol: TCP
+          volumeMounts:
+          - name: config
+            mountPath: /go/config.yaml
+            readOnly: true
+            subPath: config.yaml
+      volumes:
+          - name: config
+            configMap:
+              name: config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: monitoring
+  name: simple-http-blackbox-exporter
+  labels:
+    system: monitoring
+    component: simple-http-blackbox-exporter
+spec:
+  selector:
+    system: monitoring
+    component: simple-http-blackbox-exporter
+  ports:
+    - name: http-blkbox-exp
+      port: 1234
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: simple-http-blackbox-exporter
+  namespace: monitoring
+  labels:
+    system: monitoring
+    component: simple-http-blackbox-exporter
+spec:
+  podSelector:
+    matchLabels:
+      system: monitoring
+      component: simple-http-blackbox-exporter
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              system: monitoring
+              component: prometheus
+      ports:
+        - protocol: TCP
+          port: 1234
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
