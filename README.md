@@ -62,6 +62,21 @@ time="2020-04-25T13:00:49Z" level=info msg="client.Get to https://httpstat.us/20
 time="2020-04-25T13:00:49Z" level=warning msg="client.Get failed to get to https://httpstat.us/503 - status code: 503.\n" source="main.go:63"
 ```
 
+### Docker image
+
+You can find the docker image in my repo in [DockerHub](https://hub.docker.com/repository/docker/mihailgmihaylov/simple-http-blackbox-exporter).
+To download and use it simply:
+
+```sh
+docker push mihailgmihaylov/simple-http-blackbox-exporter:v0.1
+```
+
+Also, a package has been uploaded to this github repo:
+https://github.com/mihailgmihaylov/simple-http-blackbox-exporter/packages/199452
+
+### Releases
+Check out the latest releases [here](https://github.com/mihailgmihaylov/simple-http-blackbox-exporter/releases).
+
 ## How to build
 
 ### Run test
